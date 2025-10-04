@@ -1838,6 +1838,18 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 
 		corner_location_transform(node_transform, &rect_corners);
 
+
+		struct wlr_box rect_clipped_region_box = scene_rect->clipped_region.area;
+		int rect_clipped_region_corner_radius = scene_rect->clipped_region.corner_radius;
+		enum corner_location rect_clipped_corners = scene_rect->clipped_region.corners;
+
+		// Node relative -> Root relative
+		rect_clipped_region_box.x += x;
+		rect_clipped_region_box.y += y;
+
+		transform_output_box(&rect_clipped_region_box, data);
+		corner_location_transform(node_transform, &rect_clipped_corners);
+
 		// blur
 		bool has_alpha = !pixman_region32_empty(&opaque);
 		if (has_alpha && SCENE_RECT_SHOULD_BLUR(scene_rect, &scene->blur_data)) {
@@ -1872,6 +1884,11 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.use_optimized_blur = scene_rect->backdrop_blur_optimized,
 				.blur_data = &scene->blur_data,
 				.ignore_transparent = false,
+				.clipped_region = {
+					.area = rect_clipped_region_box,
+					.corner_radius = rect_clipped_region_corner_radius * data->scale,
+					.corners = rect_clipped_corners,
+				}
 			};
 			// Render the actual blur behind the surface
 			fx_render_pass_add_blur(data->render_pass, &blur_options);
@@ -1879,16 +1896,6 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			pixman_region32_fini(&opaque_region);
 		}
 
-		struct wlr_box rect_clipped_region_box = scene_rect->clipped_region.area;
-		int rect_clipped_region_corner_radius = scene_rect->clipped_region.corner_radius;
-		enum corner_location rect_clipped_corners = scene_rect->clipped_region.corners;
-
-		// Node relative -> Root relative
-		rect_clipped_region_box.x += x;
-		rect_clipped_region_box.y += y;
-
-		transform_output_box(&rect_clipped_region_box, data);
-		corner_location_transform(node_transform, &rect_clipped_corners);
 
 		struct fx_render_rect_options rect_options = {
 			.base = {
@@ -2079,6 +2086,11 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.clip_box = &dst_box,
 			.corners = buffer_corners,
 			.corner_radius = scene_buffer->corner_radius * data->scale,
+			.clipped_region = {
+				.area = (struct wlr_box){0},
+				.corner_radius = 0,
+				.corners = CORNER_LOCATION_NONE,
+			},
 		};
 
 		fx_render_pass_add_texture(data->render_pass, &tex_options);
