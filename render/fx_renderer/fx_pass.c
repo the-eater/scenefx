@@ -926,22 +926,37 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 		goto damage_finish;
 	}
 
-	struct fx_framebuffer *buffer = pass->fx_effect_framebuffers->optimized_blur_buffer;
-	if (!buffer || !fx_options->use_optimized_blur) {
-		if (!buffer) {
-			wlr_log(WLR_ERROR, "Warning: Failed to use optimized blur");
-		}
-		pixman_region32_translate(&translucent_region, dst_box.x, dst_box.y);
-		pixman_region32_intersect(&translucent_region, &translucent_region, options->clip);
-
-		// Render the blur into its own buffer
-		struct fx_render_blur_pass_options blur_options = *fx_options;
-		blur_options.tex_options.base.clip = &translucent_region;
-		blur_options.current_buffer = pass->buffer;
-		buffer = get_main_buffer_blur(pass, &blur_options);
+	struct wlr_texture *wlr_texture = NULL;
+	struct wlr_box src_box = {0, 0};
+	bool keep_texture = false;
+	if (fx_options->blur_target) {
+		wlr_texture = fx_options->blur_target;
+		// src_box = fx_options->blur_target_region;
+		src_box.height = fx_options->blur_target->height;
+		src_box.width = fx_options->blur_target->width;
+		keep_texture = true;
 	}
-	struct wlr_texture *wlr_texture =
-		fx_texture_from_buffer(&renderer->wlr_renderer, buffer->buffer);
+
+	if (wlr_texture == NULL) {
+		struct fx_framebuffer *buffer = pass->fx_effect_framebuffers->optimized_blur_buffer;
+		if (!buffer || !fx_options->use_optimized_blur) {
+			if (!buffer) {
+				wlr_log(WLR_ERROR, "Warning: Failed to use optimized blur");
+			}
+			pixman_region32_translate(&translucent_region, dst_box.x, dst_box.y);
+			pixman_region32_intersect(&translucent_region, &translucent_region, options->clip);
+
+			// Render the blur into its own buffer
+			struct fx_render_blur_pass_options blur_options = *fx_options;
+			blur_options.tex_options.base.clip = &translucent_region;
+			blur_options.current_buffer = pass->buffer;
+			buffer = get_main_buffer_blur(pass, &blur_options);
+		}
+
+		wlr_texture = fx_texture_from_buffer(&renderer->wlr_renderer, buffer->buffer);
+		src_box.width = buffer->buffer->width;
+		src_box.height = buffer->buffer->height;
+	}
 	struct fx_texture *blur_texture = fx_get_texture(wlr_texture);
 	blur_texture->has_alpha = true;
 
@@ -961,13 +976,15 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 	tex_options->base.src_box = (struct wlr_fbox) {
 		.x = 0,
 		.y = 0,
-		.width = buffer->buffer->width,
-		.height = buffer->buffer->height,
+		.width = src_box.width,
+		.height = src_box.height,
 	};
 	tex_options->base.texture = &blur_texture->wlr_texture;
 	fx_render_pass_add_texture(pass, tex_options);
 
-	wlr_texture_destroy(&blur_texture->wlr_texture);
+	if (!keep_texture) {
+		wlr_texture_destroy(&blur_texture->wlr_texture);
+	}
 
 	// Finish stenciling
 	if (fx_options->ignore_transparent && fx_options->tex_options.base.texture) {
@@ -976,6 +993,52 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 
 damage_finish:
 	pixman_region32_fini(&translucent_region);
+}
+
+struct wlr_texture *fx_render_pass_do_crimes(struct fx_gles_render_pass *pass, struct fx_render_blur_pass_options* fx_options, struct wlr_box* src_box) {
+	struct wlr_texture *wlr_texture = NULL;
+	if (pass->buffer->renderer->basic_renderer) {
+		wlr_log(WLR_ERROR, "Please use 'fx_renderer_begin_buffer_pass' instead of "
+				"'wlr_renderer_begin_buffer_pass' to use advanced effects");
+		return NULL;
+	}
+	struct fx_renderer *renderer = pass->buffer->renderer;
+	struct fx_render_texture_options *tex_options = &fx_options->tex_options;
+	const struct wlr_render_texture_options *options = &tex_options->base;
+
+	pixman_region32_t translucent_region;
+	pixman_region32_init(&translucent_region);
+
+	struct wlr_box dst_box;
+	wlr_render_texture_options_get_dst_box(options, &dst_box);
+
+	// Gets the translucent region
+	pixman_box32_t surface_box = { 0, 0, dst_box.width, dst_box.height };
+	pixman_region32_copy(&translucent_region, fx_options->opaque_region);
+	pixman_region32_inverse(&translucent_region, &translucent_region, &surface_box);
+	if (!pixman_region32_not_empty(&translucent_region)) {
+		goto damage_finish;
+	}
+
+	pixman_region32_translate(&translucent_region, dst_box.x, dst_box.y);
+	pixman_region32_intersect(&translucent_region, &translucent_region, options->clip);
+
+	// Render the blur into its own buffer
+	struct fx_render_blur_pass_options blur_options = *fx_options;
+	blur_options.tex_options.base.clip = &translucent_region;
+	blur_options.current_buffer = pass->buffer;
+	struct fx_framebuffer *buffer = get_main_buffer_blur(pass, &blur_options);
+
+	wlr_texture = fx_texture_from_buffer(&renderer->wlr_renderer, buffer->buffer);
+	memcpy(src_box, &dst_box, sizeof(struct wlr_box));
+	printf("%d <-> %d\n", src_box->height, dst_box.height);
+
+	struct fx_texture *blur_texture = fx_get_texture(wlr_texture);
+	blur_texture->has_alpha = true;
+
+damage_finish:
+	pixman_region32_fini(&translucent_region);
+	return wlr_texture;
 }
 
 bool fx_render_pass_add_optimized_blur(struct fx_gles_render_pass *pass,

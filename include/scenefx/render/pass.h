@@ -102,6 +102,8 @@ struct fx_render_blur_pass_options {
 	struct blur_data *blur_data;
 	bool use_optimized_blur;
 	bool ignore_transparent;
+	struct wlr_texture* blur_target;
+	struct wlr_box blur_target_region;
 };
 
 /**
@@ -151,6 +153,8 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
  */
 bool fx_render_pass_add_optimized_blur(struct fx_gles_render_pass *pass,
 		struct fx_render_blur_pass_options *fx_options);
+
+struct wlr_texture *fx_render_pass_do_crimes(struct fx_gles_render_pass *pass, struct fx_render_blur_pass_options* fx_options, struct wlr_box *src_box);
 
 /**
  * Render from one buffer to another
