@@ -153,6 +153,7 @@ struct wlr_scene_rect {
 	enum corner_location corners;
 	bool backdrop_blur;
 	bool backdrop_blur_optimized;
+	struct linked_node backdrop_blur_source;
 
 	bool accepts_input;
 	struct clipped_region clipped_region;
@@ -192,6 +193,8 @@ struct wlr_scene_optimized_blur {
 struct wlr_scene_blur_source {
 	struct wlr_scene_node node;
 	int width, height;
+
+	struct linked_node_list targets;
 
 	// TODO: should this be stored in a render data struct instead?
 	struct wlr_texture* blur_texture;
@@ -237,6 +240,7 @@ struct wlr_scene_buffer {
 	bool backdrop_blur;
 	bool backdrop_blur_optimized;
 	bool backdrop_blur_ignore_transparent;
+	struct linked_node backdrop_blur_source;
 	enum corner_location corners;
 
 	float opacity;
@@ -669,6 +673,12 @@ void wlr_scene_optimized_blur_mark_dirty(struct wlr_scene_optimized_blur *blur_n
 
 struct wlr_scene_blur_source *wlr_scene_blur_source_create(
 		struct wlr_scene_tree *parent, int width, int height);
+
+bool wlr_scene_blur_source_has_target(struct wlr_scene_blur_source *blur_source,
+		struct wlr_scene_node *node);
+
+void wlr_scene_blur_source_add_target(struct wlr_scene_blur_source *blur_source,
+		struct wlr_scene_node *node);
 
 void wlr_scene_blur_source_set_size(struct wlr_scene_blur_source *blur_node,
 		int width, int height);

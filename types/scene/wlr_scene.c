@@ -1247,9 +1247,39 @@ struct wlr_scene_blur_source *wlr_scene_blur_source_create(
 	blur_source->height = height;
 	blur_source->blur_texture = NULL;
 
+	linked_node_list_init(&blur_source->targets);
+
 	scene_node_update(&blur_source->node, NULL);
 
 	return blur_source;
+}
+
+bool wlr_scene_blur_source_has_target(struct wlr_scene_blur_source *blur_source,
+		struct wlr_scene_node *node) {
+	if (node->type == WLR_SCENE_NODE_RECT) {
+		struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
+		return linked_node_list_is_linked(&blur_source->targets, &rect->backdrop_blur_source);
+	}
+
+	if (node->type == WLR_SCENE_NODE_BUFFER) {
+		struct wlr_scene_buffer *buf = wlr_scene_buffer_from_node(node);
+		return linked_node_list_is_linked(&blur_source->targets, &buf->backdrop_blur_source);
+	}
+
+	return false;
+}
+
+void wlr_scene_blur_source_add_target(struct wlr_scene_blur_source *blur_source,
+		struct wlr_scene_node *node) {
+	if (node->type == WLR_SCENE_NODE_RECT) {
+		struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
+		linked_node_list_init_link(&blur_source->targets, &rect->backdrop_blur_source);
+	}
+
+	if (node->type == WLR_SCENE_NODE_BUFFER) {
+		struct wlr_scene_buffer *buf = wlr_scene_buffer_from_node(node);
+		linked_node_list_init_link(&blur_source->targets, &buf->backdrop_blur_source);
+	}
 }
 
 void wlr_scene_blur_source_set_size(struct wlr_scene_blur_source *blur_node,
