@@ -60,6 +60,7 @@ enum wlr_scene_node_type {
 	WLR_SCENE_NODE_SHADOW,
 	WLR_SCENE_NODE_BUFFER,
 	WLR_SCENE_NODE_OPTIMIZED_BLUR,
+	WLR_SCENE_NODE_BLUR_SOURCE,
 };
 
 /** A node is an object in the scene. */
@@ -173,6 +174,15 @@ struct wlr_scene_optimized_blur {
 	int width, height;
 
 	bool dirty;
+};
+
+/** A scene-graph node create a blur texture for other scene-graph nodes to use */
+struct wlr_scene_blur_source {
+	struct wlr_scene_node node;
+	int width, height;
+
+	// TODO: should this be stored in a render data struct instead?
+	struct wlr_texture* blur_texture;
 };
 
 struct wlr_scene_outputs_update_event {
@@ -580,6 +590,9 @@ void wlr_scene_shadow_set_clipped_region(struct wlr_scene_shadow *shadow,
 struct wlr_scene_optimized_blur *wlr_scene_optimized_blur_from_node(
 		struct wlr_scene_node *node);
 
+struct wlr_scene_blur_source *wlr_scene_blur_source_from_node(
+		struct wlr_scene_node *node);
+
 /**
  * Add a node indicating to the renderer to render optimized blur to the scene-graph.
  * NOTE: Has to be positioned where to draw the optimized blur. This allows
@@ -603,6 +616,12 @@ void wlr_scene_optimized_blur_set_size(struct wlr_scene_optimized_blur *blur_nod
  * wallpaper.
  */
 void wlr_scene_optimized_blur_mark_dirty(struct wlr_scene_optimized_blur *blur_node);
+
+struct wlr_scene_blur_source *wlr_scene_blur_source_create(
+		struct wlr_scene_tree *parent, int width, int height);
+
+void wlr_scene_blur_source_set_size(struct wlr_scene_blur_source *blur_node,
+		int width, int height);
 
 /**
  * Add a node displaying a buffer to the scene-graph.
