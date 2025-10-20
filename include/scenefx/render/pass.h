@@ -102,6 +102,7 @@ struct fx_render_blur_pass_options {
 	struct blur_data *blur_data;
 	bool use_optimized_blur;
 	bool ignore_transparent;
+	struct wlr_texture *blur_source;
 };
 
 /**
