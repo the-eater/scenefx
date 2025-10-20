@@ -106,6 +106,7 @@ struct fx_render_blur_pass_options {
 	int corner_radius;
 	enum corner_location corners;
 	struct clipped_region clipped_region;
+	struct wlr_texture *blur_source;
 };
 
 /**
