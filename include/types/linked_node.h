@@ -1,6 +1,7 @@
 #ifndef TYPES_LINKED_NODES_H
 #define TYPES_LINKED_NODES_H
 #include <wayland-util.h>
+#include <stdbool.h>
 
 /**
  * A node in a link between two objects. Can be used to safely couple two

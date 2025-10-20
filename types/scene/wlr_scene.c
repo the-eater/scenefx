@@ -24,7 +24,7 @@
 #include "scenefx/types/fx/blur_data.h"
 #include "scenefx/types/fx/clipped_region.h"
 #include "scenefx/types/fx/corner_location.h"
-#include "types/linked_nodes.h"
+#include "types/linked_node.h"
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 #include "util/array.h"
@@ -33,6 +33,8 @@
 #include "wlr/util/box.h"
 
 #include <wlr/config.h>
+
+#include "types/linked_node.h"
 
 #if WLR_HAS_XWAYLAND
 #include <wlr/xwayland/xwayland.h>
@@ -209,6 +211,7 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		linked_node_list_destroy(&blur_source->rect_targets);
 		if (blur_source->blur_texture != NULL) {
 			wlr_texture_destroy(blur_source->blur_texture);
+			blur_source->blur_texture = NULL;
 		}
 	}
 
@@ -2013,6 +2016,14 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			scene_node_opaque_region(node, x, y, &opaque_region);
 			logical_to_buffer_coords(&opaque_region, data, false);
 
+			struct linked_node_list *parent = linked_node_list_get_parent(&scene_rect->backdrop_blur_source);
+			struct wlr_texture *blur_source_texture = NULL;
+			if (parent != NULL) {
+				struct wlr_scene_blur_source *source;
+				source = wl_container_of(parent, source, rect_targets);
+				blur_source_texture = source->blur_texture;
+			}
+
 			/* TODO: should this be configurable? Borked when not 1.0, probably due to
 			   lack of premultiplication in the frag shader
 			*/
@@ -2039,6 +2050,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.use_optimized_blur = scene_rect->backdrop_blur_optimized,
 				.blur_data = &scene->blur_data,
 				.ignore_transparent = false,
+				.blur_source = blur_source_texture,
 			};
 			// Render the actual blur behind the surface
 			fx_render_pass_add_blur(data->render_pass, &blur_options);
@@ -2119,6 +2131,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.use_optimized_blur = false,
 			.ignore_transparent = false,
 			.blur_data = &scene->blur_data,
+			.blur_source = NULL,
 		};
 
 		pixman_region32_fini(&opaque_region);
@@ -2155,6 +2168,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 					.discard_transparent = false,
 				},
 				.blur_data = &scene->blur_data,
+				.blur_source = NULL,
 			};
 			bool result = fx_render_pass_add_optimized_blur(data->render_pass, &blur_options);
 			if (result) {
