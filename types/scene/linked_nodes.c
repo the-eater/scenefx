@@ -83,54 +83,75 @@ void linked_node_list_init(struct linked_node_list *list) {
 	wl_list_init(&list->list);
 }
 
-static struct linked_node_list_entry *linked_node_list_get_entry(struct linked_node_list *linked_list, struct linked_node* node)
-{
+bool linked_node_list_is_linked(struct linked_node_list *linked_list, struct linked_node_list_child* node) {
+	if (node->link == NULL || wl_list_empty(&linked_list->list)) {
+		return false;
+	}
+
 	struct linked_node_list_entry *entry;
 	wl_list_for_each(entry, &linked_list->list, link) {
-		if (linked_nodes_are_linked(&entry->node, node)) {
-			return entry;
+		if (node->link == entry) {
+			return true;
 		}
 	}
 
-	return NULL;
+	return false;
 }
 
-bool linked_node_list_is_linked(struct linked_node_list *linked_list, struct linked_node* node) {
-	return NULL == linked_node_list_get_entry(linked_list, node);
+bool linked_node_list_is_empty(struct linked_node_list *linked_list) {
+	return wl_list_empty(&linked_list->list);
 }
 
-void linked_node_list_init_link(struct linked_node_list *linked_list, struct linked_node* node) {
+void linked_node_list_init_link(struct linked_node_list *linked_list, struct linked_node_list_child* node) {
 	if (linked_node_list_is_linked(linked_list, node)) {
 		return;
 	}
 
 	assert(node->link == NULL);
-
 	struct linked_node_list_entry *entry = calloc(1, sizeof(struct linked_node_list_entry));
-	entry->node = linked_node_init();
+	entry->child = node;
+	entry->list = linked_list;
 	wl_list_insert(&linked_list->list, &entry->link);
-	linked_node_init_link(&entry->node, node);
+	node->link = entry;
 }
 
-void linked_node_list_unlink(struct linked_node_list *linked_list, struct linked_node* node) {
-	struct linked_node_list_entry *entry = linked_node_list_get_entry(linked_list, node);
-	if (entry == NULL) {
+struct linked_node_list *linked_node_list_get_parent(struct linked_node_list_child *child) {
+	if (child->link == NULL) {
+		return NULL;
+	}
+
+	return child->link->list;
+}
+
+static void linked_node_list_entry_destroy(struct linked_node_list_entry *entry) {
+	if (entry->child != NULL) {
+		entry->child->link = NULL;
+	}
+
+	entry->child = NULL;
+	entry->list = NULL;
+
+	wl_list_remove(&entry->link);
+	free(entry);
+}
+
+void linked_node_list_unlink(struct linked_node_list *linked_list, struct linked_node_list_child* node) {
+	if (!linked_node_list_is_linked(linked_list, node)) {
 		return;
 	}
 
-	linked_node_unlink(&entry->node, node);
-	wl_list_remove(&entry->link);
-	free(entry);
+	linked_node_list_entry_destroy(node->link);
+}
+
+void linked_node_list_child_destroy(struct linked_node_list_child *child) {
+	if (child->link == NULL) return;
+	linked_node_list_entry_destroy(child->link);
 }
 
 void linked_node_list_destroy(struct linked_node_list *linked_list) {
 	struct linked_node_list_entry *entry;
 	struct linked_node_list_entry *tmp;
 	wl_list_for_each_safe(entry, tmp, &linked_list->list, link) {
-		linked_node_destroy(&entry->node);
-		wl_list_remove(&entry->link);
-		free(entry);
+		linked_node_list_entry_destroy(entry);
 	}
-
-	free(linked_list);
 }

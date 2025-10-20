@@ -170,6 +170,7 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		scene_buffer_set_texture(scene_buffer, NULL);
 		pixman_region32_fini(&scene_buffer->opaque_region);
 		wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
+		linked_node_list_child_destroy(&scene_buffer->backdrop_blur_source);;
 
 		assert(wl_list_empty(&scene_buffer->events.output_leave.listener_list));
 		assert(wl_list_empty(&scene_buffer->events.output_enter.listener_list));
@@ -202,6 +203,13 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		// Remove the drop-shadows referenced buffers link to this node
 		struct wlr_scene_shadow *scene_shadow = wlr_scene_shadow_from_node(node);
 		linked_node_destroy(&scene_shadow->buffer_link);
+	} else if (node->type == WLR_SCENE_NODE_BLUR_SOURCE) {
+		struct wlr_scene_blur_source *blur_source = wlr_scene_blur_source_from_node(node);
+		linked_node_list_destroy(&blur_source->buffer_targets);
+		linked_node_list_destroy(&blur_source->rect_targets);
+		if (blur_source->blur_texture != NULL) {
+			wlr_texture_destroy(blur_source->blur_texture);
+		}
 	}
 
 	assert(wl_list_empty(&node->events.destroy.listener_list));
@@ -846,6 +854,7 @@ struct wlr_scene_rect *wlr_scene_rect_create(struct wlr_scene_tree *parent,
 	scene_rect->clipped_region = clipped_region_get_default();
 	scene_rect->backdrop_blur = false;
 	scene_rect->backdrop_blur_optimized = false;
+	scene_rect->backdrop_blur_source = linked_list_node_child_init();
 
 	scene_node_update(&scene_rect->node, NULL);
 
@@ -1247,7 +1256,8 @@ struct wlr_scene_blur_source *wlr_scene_blur_source_create(
 	blur_source->height = height;
 	blur_source->blur_texture = NULL;
 
-	linked_node_list_init(&blur_source->targets);
+	linked_node_list_init(&blur_source->rect_targets);
+	linked_node_list_init(&blur_source->buffer_targets);
 
 	scene_node_update(&blur_source->node, NULL);
 
@@ -1258,12 +1268,12 @@ bool wlr_scene_blur_source_has_target(struct wlr_scene_blur_source *blur_source,
 		struct wlr_scene_node *node) {
 	if (node->type == WLR_SCENE_NODE_RECT) {
 		struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
-		return linked_node_list_is_linked(&blur_source->targets, &rect->backdrop_blur_source);
+		return linked_node_list_is_linked(&blur_source->rect_targets, &rect->backdrop_blur_source);
 	}
 
 	if (node->type == WLR_SCENE_NODE_BUFFER) {
 		struct wlr_scene_buffer *buf = wlr_scene_buffer_from_node(node);
-		return linked_node_list_is_linked(&blur_source->targets, &buf->backdrop_blur_source);
+		return linked_node_list_is_linked(&blur_source->buffer_targets, &buf->backdrop_blur_source);
 	}
 
 	return false;
@@ -1273,12 +1283,25 @@ void wlr_scene_blur_source_add_target(struct wlr_scene_blur_source *blur_source,
 		struct wlr_scene_node *node) {
 	if (node->type == WLR_SCENE_NODE_RECT) {
 		struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
-		linked_node_list_init_link(&blur_source->targets, &rect->backdrop_blur_source);
+		linked_node_list_init_link(&blur_source->rect_targets, &rect->backdrop_blur_source);
 	}
 
 	if (node->type == WLR_SCENE_NODE_BUFFER) {
 		struct wlr_scene_buffer *buf = wlr_scene_buffer_from_node(node);
-		linked_node_list_init_link(&blur_source->targets, &buf->backdrop_blur_source);
+		linked_node_list_init_link(&blur_source->buffer_targets, &buf->backdrop_blur_source);
+	}
+}
+
+void wlr_scene_blur_source_remove_target(struct wlr_scene_blur_source *blur_source,
+		struct wlr_scene_node *node) {
+	if (node->type == WLR_SCENE_NODE_RECT) {
+		struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
+		linked_node_list_unlink(&blur_source->rect_targets, &rect->backdrop_blur_source);
+	}
+
+	if (node->type == WLR_SCENE_NODE_BUFFER) {
+		struct wlr_scene_buffer *buf = wlr_scene_buffer_from_node(node);
+		linked_node_list_unlink(&blur_source->buffer_targets, &buf->backdrop_blur_source);
 	}
 }
 
@@ -1317,6 +1340,7 @@ struct wlr_scene_buffer *wlr_scene_buffer_create(struct wlr_scene_tree *parent,
 	scene_buffer->backdrop_blur = false;
 	scene_buffer->backdrop_blur_optimized = false;
 	scene_buffer->backdrop_blur_ignore_transparent = true;
+	scene_buffer->backdrop_blur_source = linked_list_node_child_init();
 	scene_buffer->corners = CORNER_LOCATION_NONE;
 	scene_buffer->drop_shadow_link = linked_node_init();
 
@@ -2307,6 +2331,14 @@ fallback_box_shadow:
 				pixman_region32_translate(&opaque_region,
 						-scene_buffer->src_box.x, -scene_buffer->src_box.y);
 
+				struct linked_node_list *parent = linked_node_list_get_parent(&scene_buffer->backdrop_blur_source);
+				struct wlr_texture *blur_source_texture = NULL;
+				if (parent != NULL) {
+					struct wlr_scene_blur_source *source;
+					source = wl_container_of(parent, source, buffer_targets);
+					blur_source_texture = source->blur_texture;
+				}
+
 				// TODO: should I be configurable? We should probably move blur to a node
 				float blur_alpha = 1.0;
 				struct fx_render_blur_pass_options blur_options = {
@@ -2329,6 +2361,7 @@ fallback_box_shadow:
 					.use_optimized_blur = scene_buffer->backdrop_blur_optimized,
 					.blur_data = &scene->blur_data,
 					.ignore_transparent = scene_buffer->backdrop_blur_ignore_transparent,
+					.blur_source = blur_source_texture,
 				};
 				// Render the actual blur behind the surface
 				fx_render_pass_add_blur(data->render_pass, &blur_options);
@@ -2672,8 +2705,8 @@ static bool scene_node_invisible(struct wlr_scene_node *node) {
 	} else if (node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
 		return false;
 	} else if (node->type == WLR_SCENE_NODE_BLUR_SOURCE) {
-		// TODO: check if anything is using the blur source
-		return false;
+		struct wlr_scene_blur_source *blur_source = wlr_scene_blur_source_from_node(node);
+		return linked_node_list_is_empty(&blur_source->buffer_targets) && linked_node_list_is_empty(&blur_source->rect_targets);
 	} else if (node->type == WLR_SCENE_NODE_BUFFER) {
 		struct wlr_scene_buffer *buffer = wlr_scene_buffer_from_node(node);
 
