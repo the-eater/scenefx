@@ -182,6 +182,14 @@ struct fx_renderer {
 		struct tex_shader tex_rgba;
 		struct tex_shader tex_rgbx;
 		struct tex_shader tex_ext;
+
+		struct tex_shader tex_with_mask_rgba_rgba;
+		struct tex_shader tex_with_mask_rgba_ext;
+		struct tex_shader tex_with_mask_rgbx_rgba;
+		struct tex_shader tex_with_mask_rgbx_ext;
+		struct tex_shader tex_with_mask_ext_rgba;
+		struct tex_shader tex_with_mask_ext_ext;
+
 		struct box_shadow_shader box_shadow;
 		struct blur_shader blur1;
 		struct blur_shader blur2;

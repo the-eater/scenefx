@@ -52,6 +52,13 @@ struct fx_gradient {
 	float *colors;
 };
 
+struct fx_render_texture_mask_options {
+	/* mask texture */
+	struct wlr_texture *texture;
+	/* Destination coordinates, width/height default to the texture size */
+	struct wlr_box dst_box;
+};
+
 struct fx_render_texture_options {
 	struct wlr_render_texture_options base;
 	const struct wlr_box *clip_box; // Used to clip csd. Ignored if NULL
@@ -59,6 +66,7 @@ struct fx_render_texture_options {
 	int corner_radius;
 	bool discard_transparent;
 	struct clipped_region clipped_region;
+	struct fx_render_texture_mask_options mask;
 };
 
 struct fx_render_rect_options {

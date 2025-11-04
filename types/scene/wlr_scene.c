@@ -1042,7 +1042,7 @@ struct wlr_scene_blur *wlr_scene_blur_create(struct wlr_scene_tree *parent,
 	blur->clipped_region = (struct clipped_region){0};
 	blur->corners = CORNER_LOCATION_NONE;
 	blur->should_only_blur_bottom_layer = false;
-	blur->transparency_mask_source = NULL;
+	blur->transparency_mask_source = linked_node_init();
 	blur->width = width;
 	blur->height = height;
 
@@ -1084,12 +1084,21 @@ void wlr_scene_blur_set_should_only_blur_bottom_layer(struct wlr_scene_blur *blu
 }
 
 void wlr_scene_blur_set_transparency_mask_source(struct wlr_scene_blur *blur,
-	struct wlr_scene_node *source) {
-	if (blur->transparency_mask_source == source) {
+	struct wlr_scene_buffer *source) {
+	if (source == NULL && blur->transparency_mask_source.link == NULL) {
 		return;
 	}
 
-	blur->transparency_mask_source = source;
+	if (source != NULL && linked_nodes_are_linked(&blur->transparency_mask_source, &source->blur)) {
+		return;
+	}
+
+	linked_node_orphan(&blur->transparency_mask_source);
+
+	if (source != NULL) {
+		linked_node_init_link(&blur->transparency_mask_source, &source->blur);
+	}
+
 	scene_node_update(&blur->node, NULL);
 }
 
@@ -2035,6 +2044,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.corners = buffer_corners,
 			.corner_radius = scene_buffer->corner_radius * data->scale,
 			.clipped_region = {0},
+			.mask = {0},
 		};
 
 		fx_render_pass_add_texture(data->render_pass, &tex_options);
@@ -2054,6 +2064,22 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		break;
 	case WLR_SCENE_NODE_BLUR:;
 		struct wlr_scene_blur *blur = wlr_scene_blur_from_node(node);
+		struct linked_node *mask_source = linked_nodes_get_sibling(&blur->transparency_mask_source);
+		struct fx_render_texture_mask_options mask = {0};
+		struct wlr_scene_buffer *buffer = NULL;
+		if (mask_source != NULL) {
+			buffer = wl_container_of(mask_source, buffer, blur);
+		}
+
+		if (buffer != NULL && !buffer->is_single_pixel_buffer) {
+			mask.texture = scene_buffer_get_texture(buffer, data->output->output->renderer);
+		}
+
+		if (mask.texture != NULL) {
+			scene_node_get_size(&buffer->node, &mask.dst_box.width, &mask.dst_box.height);
+			wlr_scene_node_coords(&buffer->node, &mask.dst_box.x, &mask.dst_box.y);
+			transform_output_box(&mask.dst_box, data);
+		}
 
 		struct fx_render_blur_pass_options blur_options = {
 			.tex_options = {
@@ -2071,6 +2097,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.corner_radius = blur->corner_radius * data->scale,
 				.corners = blur->corners,
 				.discard_transparent = false,
+				.mask = mask,
 			},
 			.opaque_region = NULL,
 			.use_optimized_blur = blur->should_only_blur_bottom_layer,

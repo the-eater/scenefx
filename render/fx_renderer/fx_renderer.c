@@ -354,6 +354,32 @@ static bool link_shaders(struct fx_renderer *renderer) {
 		goto error;
 	}
 
+
+	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_rgba_rgba, (GLint) client_version, SHADER_SOURCE_TEXTURE_RGBA, SHADER_SOURCE_TEXTURE_RGBA)) {
+		wlr_log(WLR_ERROR, "Could not link tex_with_mask_RGBA_RGBA shader");
+		goto error;
+	}
+	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_rgba_ext, (GLint) client_version, SHADER_SOURCE_TEXTURE_RGBA, SHADER_SOURCE_TEXTURE_EXTERNAL)) {
+		wlr_log(WLR_ERROR, "Could not link tex_with_mask_RGBA_EXT shader");
+		goto error;
+	}
+	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_rgbx_rgba, (GLint) client_version, SHADER_SOURCE_TEXTURE_RGBX, SHADER_SOURCE_TEXTURE_RGBA)) {
+		wlr_log(WLR_ERROR, "Could not link tex_with_mask_RGBX_RGBA shader");
+		goto error;
+	}
+	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_rgbx_ext, (GLint) client_version, SHADER_SOURCE_TEXTURE_RGBX, SHADER_SOURCE_TEXTURE_EXTERNAL)) {
+		wlr_log(WLR_ERROR, "Could not link tex_with_mask_RGBX_EXT shader");
+		goto error;
+	}
+	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_ext_rgba, (GLint) client_version, SHADER_SOURCE_TEXTURE_EXTERNAL, SHADER_SOURCE_TEXTURE_RGBA)) {
+		wlr_log(WLR_ERROR, "Could not link tex_with_mask_EXT_RGBA shader");
+		goto error;
+	}
+	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_ext_ext, (GLint) client_version, SHADER_SOURCE_TEXTURE_EXTERNAL, SHADER_SOURCE_TEXTURE_EXTERNAL)) {
+		wlr_log(WLR_ERROR, "Could not link tex_with_mask_EXT_EXT shader");
+		goto error;
+	}
+
 	// box shadow shader
 	if (!link_box_shadow_program(&renderer->shaders.box_shadow, (GLint) client_version)) {
 		wlr_log(WLR_ERROR, "Could not link box shadow shader");

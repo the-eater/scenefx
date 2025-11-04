@@ -9,6 +9,7 @@
 #include "GLES2/gl2.h"
 // gles3
 #include "common_vert_gles3_src.h"
+#include "common_2_textures_vert_gles3_src.h"
 #include "gradient_frag_gles3_src.h"
 #include "corner_alpha_frag_gles3_src.h"
 #include "quad_frag_gles3_src.h"
@@ -20,8 +21,10 @@
 #include "blur1_frag_gles3_src.h"
 #include "blur2_frag_gles3_src.h"
 #include "blur_effects_frag_gles3_src.h"
+#include "tex_with_tex_mask_frag_gles3_src.h"
 // gles2
 #include "common_vert_gles2_src.h"
+#include "common_2_textures_vert_gles2_src.h"
 #include "gradient_frag_gles2_src.h"
 #include "corner_alpha_frag_gles2_src.h"
 #include "quad_frag_gles2_src.h"
@@ -33,6 +36,7 @@
 #include "blur1_frag_gles2_src.h"
 #include "blur2_frag_gles2_src.h"
 #include "blur_effects_frag_gles2_src.h"
+#include "tex_with_tex_mask_frag_gles2_src.h"
 
 GLuint compile_shader(GLuint type, const GLchar *src) {
 	GLuint shader = glCreateShader(type);
@@ -52,6 +56,11 @@ GLuint compile_shader(GLuint type, const GLchar *src) {
 
 GLuint link_program(const GLchar *frag_src, GLint client_version) {
 	const GLchar *vert_src = client_version > 2 ? common_vert_gles3_src : common_vert_gles2_src;
+	return link_program_with_vert(vert_src, frag_src);
+}
+
+GLuint link_program_with_vert(const GLchar *vert_src, const GLchar *frag_src)
+{
 	GLuint vert = compile_shader(GL_VERTEX_SHADER, vert_src);
 	if (!vert) {
 		goto error;
@@ -83,10 +92,9 @@ GLuint link_program(const GLchar *frag_src, GLint client_version) {
 
 	return prog;
 
-error:
-	return 0;
+	error:
+		return 0;
 }
-
 
 bool check_gl_ext(const char *exts, const char *ext) {
 	size_t extlen = strlen(ext);
@@ -290,6 +298,54 @@ bool link_tex_program(struct tex_shader *shader, GLint client_version, enum fx_t
 	shader->alpha = glGetUniformLocation(prog, "alpha");
 	shader->pos_attrib = glGetAttribLocation(prog, "pos");
 	shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
+	shader->size = glGetUniformLocation(prog, "size");
+	shader->position = glGetUniformLocation(prog, "position");
+	shader->radius_top_left = glGetUniformLocation(prog, "radius_top_left");
+	shader->radius_top_right = glGetUniformLocation(prog, "radius_top_right");
+	shader->radius_bottom_left = glGetUniformLocation(prog, "radius_bottom_left");
+	shader->radius_bottom_right = glGetUniformLocation(prog, "radius_bottom_right");
+	shader->discard_transparent = glGetUniformLocation(prog, "discard_transparent");
+
+	shader->clip_size = glGetUniformLocation(prog, "clip_size");
+	shader->clip_position = glGetUniformLocation(prog, "clip_position");
+	shader->clip_radius_top_left = glGetUniformLocation(prog, "clip_radius_top_left");
+	shader->clip_radius_top_right = glGetUniformLocation(prog, "clip_radius_top_right");
+	shader->clip_radius_bottom_left = glGetUniformLocation(prog, "clip_radius_bottom_left");
+	shader->clip_radius_bottom_right = glGetUniformLocation(prog, "clip_radius_bottom_right");
+
+	return true;
+}
+
+bool link_tex_with_tex_mask_program(struct tex_shader *shader,
+	GLint client_version, enum fx_tex_shader_source source,
+	enum fx_tex_shader_source mask) {
+	GLchar frag_src_part[4096];
+	GLchar frag_src[4096 + 2048];
+	if (client_version > 2) {
+		snprintf(frag_src_part, sizeof(frag_src_part),
+			tex_with_tex_mask_frag_gles3_src, source, mask);
+		snprintf(frag_src, sizeof(frag_src),
+			"%s\n%s\n", frag_src_part, corner_alpha_frag_gles3_src);
+	} else {
+		snprintf(frag_src_part, sizeof(frag_src_part),
+			tex_with_tex_mask_frag_gles2_src, source, mask);
+		snprintf(frag_src, sizeof(frag_src),
+			"%s\n%s\n", frag_src_part, corner_alpha_frag_gles2_src);
+	}
+
+	GLuint prog;
+	shader->program = prog = link_program_with_vert(client_version > 2 ? common_2_textures_vert_gles3_src : common_2_textures_vert_gles2_src, frag_src);
+	if (!shader->program) {
+		return false;
+	}
+
+	shader->proj = glGetUniformLocation(prog, "proj");
+	shader->tex = glGetUniformLocation(prog, "tex");
+	shader->tex2 = glGetUniformLocation(prog, "tex2");
+	shader->alpha = glGetUniformLocation(prog, "alpha");
+	shader->pos_attrib = glGetAttribLocation(prog, "pos");
+	shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
+	shader->tex2_proj = glGetUniformLocation(prog, "tex2_proj");
 	shader->size = glGetUniformLocation(prog, "size");
 	shader->position = glGetUniformLocation(prog, "position");
 	shader->radius_top_left = glGetUniformLocation(prog, "radius_top_left");

@@ -10,6 +10,8 @@ GLuint compile_shader(GLuint type, const GLchar *src);
 
 GLuint link_program(const GLchar *frag_src, GLint client_version);
 
+GLuint link_program_with_vert(const GLchar *vert_src, const GLchar *frag_src);
+
 bool check_gl_ext(const char *exts, const char *ext);
 
 void load_gl_proc(void *proc_ptr, const char *name);
@@ -126,9 +128,16 @@ struct tex_shader {
 	GLint clip_radius_top_right;
 	GLint clip_radius_bottom_left;
 	GLint clip_radius_bottom_right;
+
+	GLint tex2;
+	GLint tex2_proj;
 };
 
 bool link_tex_program(struct tex_shader *shader, GLint client_version, enum fx_tex_shader_source source);
+
+bool link_tex_with_tex_mask_program(struct tex_shader *shader,
+	GLint client_version,enum fx_tex_shader_source source,
+	enum fx_tex_shader_source mask);
 
 struct box_shadow_shader {
 	GLuint program;

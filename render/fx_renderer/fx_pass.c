@@ -31,6 +31,7 @@ struct fx_render_texture_options fx_render_texture_options_default(
 		.discard_transparent = false,
 		.clip_box = NULL,
 		.clipped_region = {0},
+		.mask = {0},
 	};
 	memcpy(&options.base, base, sizeof(*base));
 	return options;
@@ -154,40 +155,6 @@ static const struct wlr_render_pass_impl render_pass_impl = {
 /// FX pass functions
 ///
 
-// TODO: REMOVE STENCILING
-
-// Initialize the stenciling work
-static void stencil_mask_init(void) {
-	glClearStencil(0);
-	glClear(GL_STENCIL_BUFFER_BIT);
-	glEnable(GL_STENCIL_TEST);
-
-	glStencilFunc(GL_ALWAYS, 1, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-	// Disable writing to color buffer
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-}
-
-// Close the mask
-static void stencil_mask_close(bool draw_inside_mask) {
-	// Reenable writing to color buffer
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-	if (draw_inside_mask) {
-		glStencilFunc(GL_EQUAL, 1, 0xFF);
-		glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-		return;
-	}
-	glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-}
-
-// Finish stenciling and clear the buffer
-static void stencil_mask_fini(void) {
-	glClearStencil(0);
-	glClear(GL_STENCIL_BUFFER_BIT);
-	glDisable(GL_STENCIL_TEST);
-}
-
 static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLint attrib) {
 	pixman_region32_t region;
 	pixman_region32_init_rect(&region, box->x, box->y, box->width, box->height);
@@ -282,22 +249,54 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
 	const struct wlr_render_texture_options *options = &fx_options->base;
 	struct fx_renderer *renderer = pass->buffer->renderer;
 	struct fx_texture *texture = fx_get_texture(options->texture);
+	struct fx_texture *mask = NULL;
+	if (fx_options->mask.texture != NULL) {
+		mask = fx_get_texture(fx_options->mask.texture);
+	}
 
 	struct tex_shader *shader = NULL;
 
 	switch (texture->target) {
 	case GL_TEXTURE_2D:
-		if (texture->has_alpha) {
-			shader = &renderer->shaders.tex_rgba;
+		if (mask == NULL) {
+			if (texture->has_alpha) {
+				shader = &renderer->shaders.tex_rgba;
+			} else {
+				shader = &renderer->shaders.tex_rgbx;
+			}
 		} else {
-			shader = &renderer->shaders.tex_rgbx;
+			if (mask->target == GL_TEXTURE_2D) {
+				if (texture->has_alpha) {
+					shader = &renderer->shaders.tex_with_mask_rgba_rgba;
+				} else {
+					shader = &renderer->shaders.tex_with_mask_rgbx_rgba;
+				}
+			}
+
+			if (mask->target == GL_TEXTURE_EXTERNAL_OES) {
+				if (texture->has_alpha) {
+					shader = &renderer->shaders.tex_with_mask_rgba_ext;
+				} else {
+					shader = &renderer->shaders.tex_with_mask_rgbx_ext;
+				}
+			}
 		}
 		break;
 	case GL_TEXTURE_EXTERNAL_OES:
 		// EGL_EXT_image_dma_buf_import_modifiers requires
 		// GL_OES_EGL_image_external
 		assert(renderer->exts.OES_egl_image_external);
-		shader = &renderer->shaders.tex_ext;
+		if (mask == NULL) {
+			shader = &renderer->shaders.tex_ext;
+		} else {
+			if (mask->target == GL_TEXTURE_2D) {
+				shader = &renderer->shaders.tex_with_mask_ext_rgba;
+			}
+
+			if (mask->target == GL_TEXTURE_EXTERNAL_OES) {
+				shader = &renderer->shaders.tex_with_mask_ext_ext;
+			}
+		}
 		break;
 	default:
 		abort();
@@ -375,6 +374,10 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(texture->target, texture->tex);
+	if (mask != NULL) {
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(mask->target, mask->tex);
+	}
 
 	switch (options->filter_mode) {
 	case WLR_SCALE_FILTER_BILINEAR:
@@ -417,10 +420,37 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
+	if (mask != NULL) {
+		const struct fx_render_texture_mask_options *mask_options = &fx_options->mask;
+		struct wlr_fbox mask_box = {0};
+		// texture base dst_box also does this, so make sure we do too
+		mask_box.width = mask_options->dst_box.width;
+		mask_box.height = mask_options->dst_box.height;
+		if (mask_box.width == 0.0 && mask_box.height == 0.0) {
+			mask_box.width = mask->wlr_texture.width;
+			mask_box.height = mask->wlr_texture.height;
+		}
+
+		mask_box.width = dst_box.width / mask_box.width;
+		mask_box.height = dst_box.height / mask_box.height;
+
+		mask_box.x = -((float)mask_options->dst_box.x / dst_box.width) * mask_box.width;
+		mask_box.y = -((float)mask_options->dst_box.y / dst_box.height) * mask_box.height;
+
+		set_tex_matrix(shader->tex2_proj, options->transform, &mask_box);
+		glUniform1i(shader->tex2, 1);
+	}
+
 	render(&dst_box, &clip_region, shader->pos_attrib);
 	pixman_region32_fini(&clip_region);
 
+	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(texture->target, 0);
+	if (mask != NULL) {
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(mask->target, 0);
+	}
+
 	pop_fx_debug(renderer);
 }
 
@@ -1006,18 +1036,6 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 	struct fx_texture *blur_texture = fx_get_texture(wlr_texture);
 	blur_texture->has_alpha = true;
 
-	// Get a stencil of the window ignoring transparent regions
-	if (fx_options->ignore_transparent && fx_options->tex_options.base.texture) {
-		stencil_mask_init();
-
-		struct fx_render_texture_options tex_options = fx_options->tex_options;
-		tex_options.discard_transparent = true;
-		tex_options.clipped_region = fx_options->clipped_region;
-		fx_render_pass_add_texture(pass, &tex_options);
-
-		stencil_mask_close(true);
-	}
-
 	// Draw the blurred texture
 	tex_options->base.dst_box = get_monitor_box(pass->output);
 	tex_options->base.src_box = (struct wlr_fbox) {
@@ -1028,14 +1046,10 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 	};
 	tex_options->base.texture = &blur_texture->wlr_texture;
 	tex_options->clipped_region = fx_options->clipped_region;
+
 	fx_render_pass_add_texture(pass, tex_options);
 
 	wlr_texture_destroy(&blur_texture->wlr_texture);
-
-	// Finish stenciling
-	if (fx_options->ignore_transparent && fx_options->tex_options.base.texture) {
-		stencil_mask_fini();
-	}
 
 damage_finish:
 	pixman_region32_fini(&translucent_region);
