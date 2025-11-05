@@ -57,6 +57,8 @@ struct fx_render_texture_mask_options {
 	struct wlr_texture *texture;
 	/* Destination coordinates, width/height default to the texture size */
 	struct wlr_box dst_box;
+	/* Transform applied to the mask texture */
+	enum wl_output_transform transform;
 };
 
 struct fx_render_texture_options {

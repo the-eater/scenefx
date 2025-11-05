@@ -213,12 +213,9 @@ static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box)
 	glUniformMatrix3fv(loc, 1, GL_FALSE, gl_matrix);
 }
 
-static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
-		const struct wlr_fbox *box) {
-	float tex_matrix[9];
-	wlr_matrix_identity(tex_matrix);
-	wlr_matrix_translate(tex_matrix, box->x, box->y);
-	wlr_matrix_scale(tex_matrix, box->width, box->height);
+static void rotate_tex_matrix(enum wl_output_transform trans,
+		float tex_matrix[9])
+{
 	wlr_matrix_translate(tex_matrix, .5, .5);
 
 	// since textures have a different origin point we have to transform
@@ -229,8 +226,35 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 		wlr_matrix_transform(tex_matrix, trans);
 	}
 	wlr_matrix_translate(tex_matrix, -.5, -.5);
+}
+
+enum tex_matrix_rotate_order {
+	ROTATE_BEFORE_SCALE = 0,
+	ROTATE_AFTER_SCALE = 1,
+};
+
+static void set_tex_matrix_with_order(GLint loc, enum wl_output_transform trans,
+		const struct wlr_fbox *box, enum tex_matrix_rotate_order rotate_order) {
+	float tex_matrix[9];
+	wlr_matrix_identity(tex_matrix);
+
+	if (rotate_order == ROTATE_BEFORE_SCALE) {
+		rotate_tex_matrix(trans, tex_matrix);
+	}
+
+	wlr_matrix_translate(tex_matrix, box->x, box->y);
+	wlr_matrix_scale(tex_matrix, box->width, box->height);
+
+	if (rotate_order == ROTATE_AFTER_SCALE) {
+		rotate_tex_matrix(trans, tex_matrix);
+	}
 
 	glUniformMatrix3fv(loc, 1, GL_FALSE, tex_matrix);
+}
+
+static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
+		const struct wlr_fbox *box) {
+	set_tex_matrix_with_order(loc, trans, box, ROTATE_AFTER_SCALE);
 }
 
 static void setup_blending(enum wlr_render_blend_mode mode) {
@@ -422,22 +446,22 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
 
 	if (mask != NULL) {
 		const struct fx_render_texture_mask_options *mask_options = &fx_options->mask;
-		struct wlr_fbox mask_box = {0};
+		struct wlr_box mask_dst_box = mask_options->dst_box;
+
 		// texture base dst_box also does this, so make sure we do too
-		mask_box.width = mask_options->dst_box.width;
-		mask_box.height = mask_options->dst_box.height;
-		if (mask_box.width == 0.0 && mask_box.height == 0.0) {
-			mask_box.width = mask->wlr_texture.width;
-			mask_box.height = mask->wlr_texture.height;
+		if (mask_dst_box.width == 0 && mask_dst_box.height == 0) {
+			mask_dst_box.width = mask->wlr_texture.width;
+			mask_dst_box.height = mask->wlr_texture.height;
 		}
 
-		mask_box.width = dst_box.width / mask_box.width;
-		mask_box.height = dst_box.height / mask_box.height;
+		struct wlr_fbox mask_box = {0};
+		mask_box.width = (float)dst_box.width / mask_dst_box.width;
+		mask_box.height = (float)dst_box.height / mask_dst_box.height;
 
-		mask_box.x = -((float)mask_options->dst_box.x / dst_box.width) * mask_box.width;
-		mask_box.y = -((float)mask_options->dst_box.y / dst_box.height) * mask_box.height;
+		mask_box.x = -((float)mask_dst_box.x / dst_box.width) * mask_box.width;
+		mask_box.y = -((float)mask_dst_box.y / dst_box.height) * mask_box.height;
 
-		set_tex_matrix(shader->tex2_proj, options->transform, &mask_box);
+		set_tex_matrix_with_order(shader->tex2_proj, mask_options->transform, &mask_box, ROTATE_BEFORE_SCALE);
 		glUniform1i(shader->tex2, 1);
 	}
 

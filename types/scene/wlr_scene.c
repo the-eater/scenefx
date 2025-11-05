@@ -2079,6 +2079,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			scene_node_get_size(&buffer->node, &mask.dst_box.width, &mask.dst_box.height);
 			wlr_scene_node_coords(&buffer->node, &mask.dst_box.x, &mask.dst_box.y);
 			transform_output_box(&mask.dst_box, data);
+			mask.transform = data->transform;
 		}
 
 		struct fx_render_blur_pass_options blur_options = {
