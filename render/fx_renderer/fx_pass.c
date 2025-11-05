@@ -454,13 +454,20 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
 			mask_dst_box.height = mask->wlr_texture.height;
 		}
 
+		// The render projection is based on `dst_box`, So we need to
+		// Scale the mask `dst_box` to be relative to the texture `dst_box`
 		struct wlr_fbox mask_box = {0};
 		mask_box.width = (float)dst_box.width / mask_dst_box.width;
 		mask_box.height = (float)dst_box.height / mask_dst_box.height;
 
+		// `set_tex_matrix` first scales -then- translates,
+		// So pre-scale the x/y coordinates
 		mask_box.x = -((float)mask_dst_box.x / dst_box.width) * mask_box.width;
 		mask_box.y = -((float)mask_dst_box.y / dst_box.height) * mask_box.height;
 
+		// We got to rotate -before- we translate/scale,
+		// Since rotation expects the midpoint to be at (.5,.5)
+		// And since mask_box midpoint is not that, it breaks if done after
 		set_tex_matrix_with_order(shader->tex2_proj, mask_options->transform, &mask_box, ROTATE_BEFORE_SCALE);
 		glUniform1i(shader->tex2, 1);
 	}
