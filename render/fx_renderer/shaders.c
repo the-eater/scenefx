@@ -59,8 +59,7 @@ GLuint link_program(const GLchar *frag_src, GLint client_version) {
 	return link_program_with_vert(vert_src, frag_src);
 }
 
-GLuint link_program_with_vert(const GLchar *vert_src, const GLchar *frag_src)
-{
+GLuint link_program_with_vert(const GLchar *vert_src, const GLchar *frag_src) {
 	GLuint vert = compile_shader(GL_VERTEX_SHADER, vert_src);
 	if (!vert) {
 		goto error;
@@ -92,8 +91,8 @@ GLuint link_program_with_vert(const GLchar *vert_src, const GLchar *frag_src)
 
 	return prog;
 
-	error:
-		return 0;
+error:
+	return 0;
 }
 
 bool check_gl_ext(const char *exts, const char *ext) {

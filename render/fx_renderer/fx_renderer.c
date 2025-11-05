@@ -354,7 +354,7 @@ static bool link_shaders(struct fx_renderer *renderer) {
 		goto error;
 	}
 
-
+	// tex with mask shaders
 	if (!link_tex_with_tex_mask_program(&renderer->shaders.tex_with_mask_rgba_rgba, (GLint) client_version, SHADER_SOURCE_TEXTURE_RGBA, SHADER_SOURCE_TEXTURE_RGBA)) {
 		wlr_log(WLR_ERROR, "Could not link tex_with_mask_RGBA_RGBA shader");
 		goto error;

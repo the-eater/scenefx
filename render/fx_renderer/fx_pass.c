@@ -1026,7 +1026,6 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 
 	// Gets the translucent region
 	pixman_box32_t surface_box = { 0, 0, dst_box.width, dst_box.height };
-
 	if (fx_options->opaque_region != NULL) {
 		pixman_region32_copy(&translucent_region, fx_options->opaque_region);
 	}
@@ -1077,7 +1076,6 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 	};
 	tex_options->base.texture = &blur_texture->wlr_texture;
 	tex_options->clipped_region = fx_options->clipped_region;
-
 	fx_render_pass_add_texture(pass, tex_options);
 
 	wlr_texture_destroy(&blur_texture->wlr_texture);
