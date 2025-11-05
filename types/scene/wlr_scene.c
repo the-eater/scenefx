@@ -158,6 +158,8 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		pixman_region32_fini(&scene_buffer->opaque_region);
 		wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
 
+		linked_node_orphan(&scene_buffer->blur);
+
 		assert(wl_list_empty(&scene_buffer->events.output_leave.listener_list));
 		assert(wl_list_empty(&scene_buffer->events.output_enter.listener_list));
 		assert(wl_list_empty(&scene_buffer->events.outputs_update.listener_list));
@@ -185,6 +187,9 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 				&scene_tree->children, link) {
 			wlr_scene_node_destroy(child);
 		}
+	} else if (node->type == WLR_SCENE_NODE_BLUR) {
+		struct wlr_scene_blur *blur = wlr_scene_blur_from_node(node);
+		linked_node_orphan(&blur->transparency_mask_source);
 	}
 
 	assert(wl_list_empty(&node->events.destroy.listener_list));
