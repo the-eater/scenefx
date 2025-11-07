@@ -2084,8 +2084,14 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 
 		struct wlr_texture *tex = NULL;
 		struct wlr_scene_buffer *mask = wlr_scene_blur_get_transparency_mask_source(blur);
+		pixman_region32_t opaque_region;
+		pixman_region32_init(&opaque_region);
+
 		if (mask != NULL) {
 			tex = scene_buffer_get_texture(mask, data->output->output->renderer);
+			int mx,my;
+			wlr_scene_node_coords(&mask->node, &mx, &my);
+			scene_node_opaque_region(&mask->node, mx, my, &opaque_region);
 		}
 
 		struct fx_render_blur_pass_options blur_options = {
@@ -2105,7 +2111,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.corners = blur->corners,
 				.discard_transparent = false,
 			},
-			.opaque_region = NULL,
+			.opaque_region = &opaque_region,
 			.use_optimized_blur = blur->should_only_blur_bottom_layer,
 			.blur_data = &scene->blur_data,
 			.ignore_transparent = mask != NULL,
