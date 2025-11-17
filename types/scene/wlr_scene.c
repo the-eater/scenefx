@@ -1849,7 +1849,8 @@ static bool scene_node_at_iterator(struct wlr_scene_node *node,
 			return false;
 		}
 	} else if (node->type == WLR_SCENE_NODE_SHADOW
-			|| node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+			|| node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR
+			|| node->type == WLR_SCENE_NODE_BLUR) {
 		// Disable interaction
 		return false;
 	}
@@ -2281,6 +2282,56 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			});
 		}
 		break;
+<<<<<<< Updated upstream
+=======
+	case WLR_SCENE_NODE_BLUR:;
+		struct wlr_scene_blur *blur = wlr_scene_blur_from_node(node);
+
+		struct wlr_texture *tex = NULL;
+		if (blur->mask_type & BLUR_MASK_IGNORE_TRANSPARENCY) {
+			struct wlr_scene_node *mask = wlr_scene_blur_get_mask_source(blur);
+
+			if (mask != NULL && mask->type == WLR_SCENE_NODE_BUFFER) {
+				struct wlr_scene_buffer *buffer = wlr_scene_buffer_from_node(mask);
+				tex = scene_buffer_get_texture(buffer, data->output->output->renderer);
+			}
+		}
+
+		pixman_region32_t opaque_region;
+		pixman_region32_init(&opaque_region);
+		// opaque_region will return the mask if used
+		scene_node_opaque_region(node, x, y, &opaque_region);
+		logical_to_buffer_coords(&opaque_region, data, false);
+
+		struct fx_render_blur_pass_options blur_options = {
+			.tex_options = {
+				.base = (struct wlr_render_texture_options) {
+					.texture = tex,
+					.src_box = (struct wlr_fbox){0},
+					.dst_box = dst_box,
+					.transform = WL_OUTPUT_TRANSFORM_NORMAL,
+					.clip = &render_region,
+					.alpha = &blur->alpha,
+					.filter_mode = WLR_SCALE_FILTER_BILINEAR,
+					.blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+				},
+				.clip_box = &dst_box,
+				.corner_radius = blur->corner_radius * data->scale,
+				.corners = blur->corners,
+				.discard_transparent = false,
+			},
+			.opaque_region = &opaque_region,
+			.use_optimized_blur = blur->should_only_blur_bottom_layer,
+			.blur_data = &scene->blur_data,
+			.ignore_transparent = tex != NULL,
+			.blur_strength = blur->strength,
+		};
+
+		// add blur will fast return if opaque region == render region
+		// so don't overdo the check here
+		fx_render_pass_add_blur(data->render_pass, &blur_options);
+		pixman_region32_fini(&opaque_region);
+>>>>>>> Stashed changes
 	}
 
 	pixman_region32_fini(&opaque);
